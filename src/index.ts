@@ -124,13 +124,23 @@ const rdsFileTemplate = (doc: Spec) => {
   ` + '\n';
 };
 
+async function installGithubCLI() {
+  await exec.exec('curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg');
+  await exec.exec('chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg');
+  await exec.exec('echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null');
+  await exec.exec('apt update && apt install gh -y');
+}
+
 async function run() {
-  const sha = context.payload['push']['after'];
+  await installGithubCLI();
+  const sha = context.payload['after'];
+  await exec.exec(`git config --local user.name 'riiid-ci'`);
+  await exec.exec(`git config --local user.email 'inside.serviceaccount@riiid.co'`);
   await exec.exec(`git checkout -b feat/generate-rds-${sha}`);
   const octokit = getOctokit(core.getInput("github-token", { required: true }));
   const compareData = await octokit.rest.repos.compareCommits({
     ...context.repo,
-    base: context.payload['push']['before'],
+    base: context.payload['before'],
     head: sha
   });
 
@@ -139,7 +149,13 @@ async function run() {
     .filter(file => file.filename.startsWith('infra-requests/rds/'))
     .map(file => file.filename);
 
+  if (detectedFilePaths.length === 0) {
+    core.warning("There are no added RDS infra requests.");
+    return;
+  }
+
   for (let filePath of detectedFilePaths) {
+    core.info(`Detected file: ${filePath}`);
     const spec = yaml.load(await fs.promises.readFile(filePath, 'utf8')) as Spec;
     const targetDir = `./riiid-aws-service-${spec.env}/service/${spec.project}/${spec.component}/rds-generated`;
     if (!fs.existsSync(targetDir)) {
@@ -149,7 +165,9 @@ async function run() {
     await fs.promises.writeFile(`${targetDir}/main.tf`, rdsFileTemplate(spec));
     await fs.promises.rm(filePath);
   }
-  await exec.exec(`git commit -a -m "feat: generate rds modules from commit ${sha}"`);
+
+  await exec.exec('git add -A');
+  await exec.exec(`git commit -m "feat: generate rds modules from commit ${sha}"`);
   await exec.exec(`gh pr create -t "Generate RDS modules from commit ${sha}" -b "This is an auto generated PR, look at the file changes" -r riiid/infra`);
 }
 

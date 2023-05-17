@@ -15254,17 +15254,33 @@ const rdsFileTemplate = (doc) => {
   }
   ` + '\n';
 };
+function installGithubCLI() {
+    return __awaiter(this, void 0, void 0, function* () {
+        yield exec.exec('curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg');
+        yield exec.exec('chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg');
+        yield exec.exec('echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null');
+        yield exec.exec('apt update && apt install gh -y');
+    });
+}
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
-        const sha = github_1.context.payload['push']['after'];
+        yield installGithubCLI();
+        const sha = github_1.context.payload['after'];
+        yield exec.exec(`git config --local user.name 'riiid-ci'`);
+        yield exec.exec(`git config --local user.email 'inside.serviceaccount@riiid.co'`);
         yield exec.exec(`git checkout -b feat/generate-rds-${sha}`);
         const octokit = (0, github_1.getOctokit)(core.getInput("github-token", { required: true }));
-        const compareData = yield octokit.rest.repos.compareCommits(Object.assign(Object.assign({}, github_1.context.repo), { base: github_1.context.payload['push']['before'], head: sha }));
+        const compareData = yield octokit.rest.repos.compareCommits(Object.assign(Object.assign({}, github_1.context.repo), { base: github_1.context.payload['before'], head: sha }));
         const detectedFilePaths = (compareData.data.files || [])
             .filter(file => file.status === 'added')
             .filter(file => file.filename.startsWith('infra-requests/rds/'))
             .map(file => file.filename);
+        if (detectedFilePaths.length === 0) {
+            core.warning("There are no added RDS infra requests.");
+            return;
+        }
         for (let filePath of detectedFilePaths) {
+            core.info(`Detected file: ${filePath}`);
             const spec = yaml.load(yield fs_1.default.promises.readFile(filePath, 'utf8'));
             const targetDir = `./riiid-aws-service-${spec.env}/service/${spec.project}/${spec.component}/rds-generated`;
             if (!fs_1.default.existsSync(targetDir)) {
@@ -15274,7 +15290,8 @@ function run() {
             yield fs_1.default.promises.writeFile(`${targetDir}/main.tf`, rdsFileTemplate(spec));
             yield fs_1.default.promises.rm(filePath);
         }
-        yield exec.exec(`git commit -a -m "feat: generate rds modules from commit ${sha}"`);
+        yield exec.exec('git add -A');
+        yield exec.exec(`git commit -m "feat: generate rds modules from commit ${sha}"`);
         yield exec.exec(`gh pr create -t "Generate RDS modules from commit ${sha}" -b "This is an auto generated PR, look at the file changes" -r riiid/infra`);
     });
 }
