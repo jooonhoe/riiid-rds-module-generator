@@ -15254,17 +15254,16 @@ const rdsFileTemplate = (doc) => {
   }
   ` + '\n';
 };
-function installGithubCLI() {
-    return __awaiter(this, void 0, void 0, function* () {
-        yield exec.exec('curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg');
-        yield exec.exec('chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg');
-        yield exec.exec('echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null');
-        yield exec.exec('apt update && apt install gh -y');
+const getReviewers = (context, octokit) => __awaiter(void 0, void 0, void 0, function* () {
+    const collaborators = yield octokit.rest.repos.listCollaborators({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        affiliation: "direct"
     });
-}
+    return collaborators.data.map(d => d.login);
+});
 function run() {
     return __awaiter(this, void 0, void 0, function* () {
-        yield installGithubCLI();
         const sha = github_1.context.payload['after'];
         yield exec.exec(`git config --local user.name 'riiid-ci'`);
         yield exec.exec(`git config --local user.email 'inside.serviceaccount@riiid.co'`);
@@ -15274,6 +15273,7 @@ function run() {
         const detectedFilePaths = (compareData.data.files || [])
             .filter(file => file.status === 'added')
             .filter(file => file.filename.startsWith('infra-requests/rds/'))
+            .filter(file => file.filename.endsWith('.yaml'))
             .map(file => file.filename);
         if (detectedFilePaths.length === 0) {
             core.warning("There are no added RDS infra requests.");
@@ -15290,9 +15290,14 @@ function run() {
             yield fs_1.default.promises.writeFile(`${targetDir}/main.tf`, rdsFileTemplate(spec));
             yield fs_1.default.promises.rm(filePath);
         }
+        const reviewers = yield getReviewers(github_1.context, octokit);
         yield exec.exec('git add -A');
         yield exec.exec(`git commit -m "feat: generate rds modules from commit ${sha}"`);
-        yield exec.exec(`gh pr create -t "Generate RDS modules from commit ${sha}" -b "This is an auto generated PR, look at the file changes" -r riiid/infra`);
+        yield exec.exec(`git push origin feat/generate-rds-${sha}`);
+        yield exec.exec(`gh pr create \
+    -t "Generate RDS modules from commit ${sha}" \
+    -b "This is an auto generated PR, look at the file changes" \
+    -r "${reviewers.join(',')}"`);
     });
 }
 run();

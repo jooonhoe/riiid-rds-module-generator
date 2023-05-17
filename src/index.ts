@@ -4,6 +4,9 @@ import endent from 'endent';
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import { context, getOctokit } from "@actions/github";
+import { GitHub } from "@actions/github/lib/utils";
+
+type Context = typeof context;
 
 interface InstanceSpec {
   instanceClass: string;
@@ -124,15 +127,16 @@ const rdsFileTemplate = (doc: Spec) => {
   ` + '\n';
 };
 
-async function installGithubCLI() {
-  await exec.exec('curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg');
-  await exec.exec('chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg');
-  await exec.exec('echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null');
-  await exec.exec('apt update && apt install gh -y');
-}
+const getReviewers = async (context: Context, octokit: InstanceType<typeof GitHub>) => {
+  const collaborators = await octokit.rest.repos.listCollaborators({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    affiliation: "direct"
+  });
+  return collaborators.data.map(d => d.login);
+};
 
 async function run() {
-  await installGithubCLI();
   const sha = context.payload['after'];
   await exec.exec(`git config --local user.name 'riiid-ci'`);
   await exec.exec(`git config --local user.email 'inside.serviceaccount@riiid.co'`);
@@ -147,6 +151,7 @@ async function run() {
   const detectedFilePaths = (compareData.data.files || [])
     .filter(file => file.status === 'added')
     .filter(file => file.filename.startsWith('infra-requests/rds/'))
+    .filter(file => file.filename.endsWith('.yaml'))
     .map(file => file.filename);
 
   if (detectedFilePaths.length === 0) {
@@ -165,10 +170,14 @@ async function run() {
     await fs.promises.writeFile(`${targetDir}/main.tf`, rdsFileTemplate(spec));
     await fs.promises.rm(filePath);
   }
-
+  const reviewers = await getReviewers(context, octokit);
   await exec.exec('git add -A');
   await exec.exec(`git commit -m "feat: generate rds modules from commit ${sha}"`);
-  await exec.exec(`gh pr create -t "Generate RDS modules from commit ${sha}" -b "This is an auto generated PR, look at the file changes" -r riiid/infra`);
+  await exec.exec(`git push origin feat/generate-rds-${sha}`);
+  await exec.exec(`gh pr create \
+    -t "Generate RDS modules from commit ${sha}" \
+    -b "This is an auto generated PR, look at the file changes" \
+    -r "${reviewers.join(',')}"`);
 }
 
 run();
