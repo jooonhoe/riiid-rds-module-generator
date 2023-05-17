@@ -136,7 +136,7 @@ async function run() {
 
   const detectedFilePaths = (compareData.data.files || [])
     .filter(file => file.status === 'added')
-    .filter(file => file.filename.startsWith('infra-request/'))
+    .filter(file => file.filename.startsWith('infra-requests/rds/'))
     .map(file => file.filename);
 
   for (let filePath of detectedFilePaths) {
