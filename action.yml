@@ -1,0 +1,8 @@
+name: "Riiid RDS module generator"
+description: "Creates a PR to provision RDS module from merged YAML spec."
+runs:
+  using: "node16"
+  main: "dist/index.js"
+inputs:
+  github-token:
+    required: true
