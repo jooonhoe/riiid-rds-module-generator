@@ -34,6 +34,7 @@ interface Spec {
   project: string;
   component: string;
   env: string;
+  nameOverride?: string;
 
   engineVersion: string;
   instances: { [key: string]: InstanceSpec };
@@ -109,6 +110,8 @@ const rdsFileTemplate = (doc: Spec) => {
     component = "${doc.component}"
     env       = "${doc.env}"
 
+    ${doc.nameOverride ? `name_override = ${doc.nameOverride}` : ''}
+
     engine_version = "${doc.engineVersion}"
     
     instances = {
@@ -151,7 +154,7 @@ async function run() {
   const detectedFilePaths = (compareData.data.files || [])
     .filter(file => file.status === 'added')
     .filter(file => file.filename.startsWith('infra-requests/rds/'))
-    .filter(file => file.filename.endsWith('.yaml'))
+    .filter(file => file.filename.endsWith('.yaml') || file.filename.endsWith('.yml'))
     .map(file => file.filename);
 
   if (detectedFilePaths.length === 0) {
