@@ -15219,6 +15219,9 @@ const sgRuleTemplate = (sgRule) => {
   `;
 };
 const extraSGRulesTemplate = (extraSGRules) => {
+    if (extraSGRules === undefined) {
+        return '';
+    }
     if (extraSGRules.length === 0) {
         return '';
     }
@@ -15236,9 +15239,7 @@ const rdsFileTemplate = (doc) => {
     project   = "${doc.project}"
     component = "${doc.component}"
     env       = "${doc.env}"
-
-    ${doc.nameOverride ? `name_override = ${doc.nameOverride}` : ''}
-
+    ${doc.nameOverride ? `\nname_override = ${doc.nameOverride}\n` : ''}
     engine_version = "${doc.engineVersion}"
     
     instances = {

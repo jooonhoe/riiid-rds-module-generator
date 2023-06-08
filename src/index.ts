@@ -40,7 +40,7 @@ interface Spec {
   instances: { [key: string]: InstanceSpec };
   vault: VaultSpec;
 
-  extraSGRules: SGRuleSpec[];
+  extraSGRules?: SGRuleSpec[];
 }
 
 const configFileTemplate = (doc: Spec) => {
@@ -90,7 +90,10 @@ const sgRuleTemplate = (sgRule: SGRuleSpec) => {
   `;
 };
 
-const extraSGRulesTemplate = (extraSGRules: SGRuleSpec[]) => {
+const extraSGRulesTemplate = (extraSGRules?: SGRuleSpec[]) => {
+  if (extraSGRules === undefined) {
+    return '';
+  }
   if (extraSGRules.length === 0) {
     return '';
   }
@@ -109,9 +112,7 @@ const rdsFileTemplate = (doc: Spec) => {
     project   = "${doc.project}"
     component = "${doc.component}"
     env       = "${doc.env}"
-
-    ${doc.nameOverride ? `name_override = ${doc.nameOverride}` : ''}
-
+    ${doc.nameOverride ? `\nname_override = ${doc.nameOverride}\n` : ''}
     engine_version = "${doc.engineVersion}"
     
     instances = {
